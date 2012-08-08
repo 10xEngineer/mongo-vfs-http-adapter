@@ -50,6 +50,10 @@ module.exports = function setup(mount, vfs, mountOptions) {
     if (mountOptions.readOnly && !(req.method === "GET" || req.method === "HEAD")) return next();
     if (!req.uri) { req.uri = urlParse(req.url); }
 
+    // Get the bucket id
+    // TODO: Pass on 404 error?
+    if (!req.params.bucketId) return next();
+
     if (mount[mount.length - 1] !== "/") mount += "/";
 
     var path = unescape(req.uri.pathname);
@@ -73,7 +77,9 @@ module.exports = function setup(mount, vfs, mountOptions) {
       res.end(message);
     }
 
-    var options = {};
+    var options = {
+      bucketId: req.params.bucketId
+    };
     if (req.method === "HEAD") {
       options.head = true;
       req.method = "GET";
@@ -164,13 +170,13 @@ module.exports = function setup(mount, vfs, mountOptions) {
     else if (req.method === "PUT") {
 
       if (path[path.length - 1] === "/") {
-        vfs.mkdir(path, {}, function (err, meta) {
+        vfs.mkdir(path, options, function (err, meta) {
           if (err) return abort(err);
           res.end();
         });
       } else {
-
-        vfs.mkfile(path, { stream: req }, function (err, meta) {
+        options.stream = req;
+        vfs.mkfile(path, options, function (err, meta) {
           if (err) return abort(err);
           res.end();
         });
@@ -184,7 +190,7 @@ module.exports = function setup(mount, vfs, mountOptions) {
       } else {
         command = vfs.rmfile;
       }
-      command(path, {}, function (err, meta) {
+      command(path, options, function (err, meta) {
         if (err) return abort(err);
         res.end();
       });
@@ -219,7 +225,8 @@ module.exports = function setup(mount, vfs, mountOptions) {
           }
           var filename = match[1];
 
-          vfs.mkfile(path + "/" + filename, {stream:stream}, function (err, meta) {
+          options.stream = stream;
+          vfs.mkfile(path + "/" + filename, options, function (err, meta) {
             if (err) return abort(err);
           });
         });
@@ -241,7 +248,7 @@ module.exports = function setup(mount, vfs, mountOptions) {
         } catch (err) {
           return abort(err);
         }
-        var command, options = {};
+        var command;
         if (message.renameFrom) {
           command = vfs.rename;
           options.from = message.renameFrom;
@@ -264,7 +271,7 @@ module.exports = function setup(mount, vfs, mountOptions) {
       });
     } // end POST commands
     else if (req.method === "PROPFIND") {
-      vfs.stat(path, {}, function (err, meta) {
+      vfs.stat(path, options, function (err, meta) {
         if (err) return abort(err);
         res.setHeader("Content-Type", "application/json");
         res.end(JSON.stringify(meta) + "\n");
