@@ -198,76 +198,28 @@ module.exports = function setup(mount, vfs, mountOptions) {
 
     else if (req.method === "POST") {
 
-      if (path[path.length - 1] === "/") {
-        var contentType = req.headers["content-type"];
-        if (!contentType) {
-          return abort(new Error("Missing Content-Type header"), 400);
-        }
-        if (!(/multipart/i).test(contentType)) {
-          return abort(new Error("Content-Type should be multipart"), 400);
-        }
-        var match = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
-        if (!match) {
-          return abort(new Error("Missing multipart boundary"), 400);
-        }
-        var boundary = match[1] || match[2];
+      var message = req.body;
 
-        var parser = multipart(req, boundary);
-
-        parser.on("part", function (stream) {
-          var contentDisposition = stream.headers["content-disposition"];
-          if (!contentDisposition) {
-            return parser.error("Missing Content-Disposition header in part");
-          }
-          var match = contentDisposition.match(/filename="([^"]*)"/);
-          if (!match) {
-            return parser.error("Missing filename in Content-Disposition header in part");
-          }
-          var filename = match[1];
-
-          options.stream = stream;
-          vfs.mkfile(path + "/" + filename, options, function (err, meta) {
-            if (err) return abort(err);
-          });
-        });
-        parser.on("error", abort);
-        parser.on("end", function () {
-          res.end();
-        });
-        return;
+      var command;
+      if (message.renameFrom) {
+        command = vfs.rename;
+        options.from = message.renameFrom;
+      }
+      else if (message.copyFrom) {
+        command = vfs.copy;
+        options.from = message.copyFrom;
+      }
+      else if (message.linkTo) {
+        command = vfs.symlink;
+        options.target = message.linkTo;
+      }
+      else {
+        return abort(new Error("Invalid command in POST " + data));
       }
 
-      var data = "";
-      req.on("data", function (chunk) {
-        data += chunk;
-      });
-      req.on("end", function () {
-        var message;
-        try {
-          message = JSON.parse(data);
-        } catch (err) {
-          return abort(err);
-        }
-        var command;
-        if (message.renameFrom) {
-          command = vfs.rename;
-          options.from = message.renameFrom;
-        }
-        else if (message.copyFrom) {
-          command = vfs.copy;
-          options.from = message.copyFrom;
-        }
-        else if (message.linkTo) {
-          command = vfs.symlink;
-          options.target = message.linkTo;
-        }
-        else {
-          return abort(new Error("Invalid command in POST " + data));
-        }
-        command(path, options, function (err, meta) {
-          if (err) return abort(err);
-          res.end();
-        });
+      command(path, options, function (err, meta) {
+        if (err) return abort(err);
+        res.end();
       });
     } // end POST commands
     else if (req.method === "PROPFIND") {
