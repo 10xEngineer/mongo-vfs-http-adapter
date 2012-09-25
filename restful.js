@@ -175,8 +175,28 @@ module.exports = function setup(mount, vfs, mountOptions) {
           res.end();
         });
       } else {
-        options.stream = req;
-        vfs.mkfile(path, options, function (err, meta) {
+        var contentLength = req.headers['content-length'];
+        var command;
+        if(contentLength > 0) {
+          command = vfs.writefile;
+        } else {
+          command = vfs.mkfile;
+        }
+        if(req._endEmitted) {
+          options.stream = new Stream();
+          options.stream.readable = true;
+
+          // Hack to make sure end event is catched
+          process.nextTick(function() {
+            console.log(req.content);
+            options.stream.emit('data', req.content);
+            options.stream.emit('end');
+          });
+        } else {
+          options.stream = req;
+        }
+
+        command.call(vfs, path, options, function (err, meta) {
           if (err) return abort(err);
           res.end();
         });
@@ -185,6 +205,7 @@ module.exports = function setup(mount, vfs, mountOptions) {
 
     else if (req.method === "DELETE") {
       var command;
+      console.log(path);
       if (path[path.length - 1] === "/") {
         command = vfs.rmdir;
       } else {
@@ -198,7 +219,7 @@ module.exports = function setup(mount, vfs, mountOptions) {
 
     else if (req.method === "POST") {
 
-      var message = req.body;
+      var message = typeof(req.content) == 'string' ? JSON.parse(req.content) : req.content;
 
       var command;
       if (message.renameFrom) {
